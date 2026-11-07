@@ -1,0 +1,42 @@
+_ > nanoagent.plugin.v0001.ManifestConfig:
+id: lending-db-rewind
+name: Lending DB Rewind
+version: 0.1.0
+status: ready
+spec: nanoagent.plugin/v0001
+
+runtime > nanoagent.plugin.v0001.RuntimeConfig:
+  type: mcp_stdio
+  command: [uv, run, --frozen, python, -m, plugin]
+
+permissions > nanoagent.plugin.v0001.PermissionsConfig:
+  network > nanoagent.plugin.v0001.NetworkConfig:
+    hosts: []
+  filesystem > nanoagent.plugin.v0001.FilesystemConfig:
+    write: [workspace]
+
+# One entry per contract.Tool; its input and output classes are contract.TOOLS's.
+tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
+  open_incident:
+    description: Build the library's incident from a seed, writing the 02:00 backup.db and the statement log statements.jsonl into the workspace
+  read_log:
+    description: Read lines of statements.jsonl, the append-only log of every statement since the backup, in the order the file holds them
+  query_db:
+    description: Run one read-only SELECT on backup.db or on restored.db once it exists
+  restore_database:
+    description: Copy backup.db to restored.db, then replay the chosen log statements onto it in the chosen order, and run PRAGMA integrity_check
+  expected_state:
+    description: The reference answer, the canonical hash of every table in the database with the bad statement never run
+
+# One entry per contract.Task; its input and output classes are contract.TASKS's.
+tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  restore-lending-db:
+    description: Rebuild a lending database as if one bad UPDATE never ran, keeping every legitimate later write
+    runner: agent
+    tools: [open_incident, read_log, query_db, restore_database]
+    reference: expected_state
+    instructions: |-
+      A library's lending database has been damaged. backup.db is the nightly 02:00 backup and statements.jsonl is the append-only log of every SQL statement run since, each with a sequence number (seq) and a timestamp to the second. At about 14:07 someone ran `UPDATE loans SET returned_at = NULL` with no WHERE clause, marking every loan as not returned. Legitimate writes kept arriving afterwards.
+      Produce restored.db: the database as it would be if that one bad statement had never run, with every other statement in the log still applied, in the order the database ran them, which is the sequence number order. Do not lose the writes made after the bad statement, and keep a book returned after it as returned.
+      Call open_incident with the seed first, read the whole log, and find the bad statement yourself: other statements that set returned_at to NULL with a WHERE clause are legitimate corrections and must stay. Build restored.db with restore_database and check it with query_db.
+      Submit restored.db's path, the sequence number of the bad statement, how many statements were replayed, and the integrity_check result, all exactly as restore_database returned them.

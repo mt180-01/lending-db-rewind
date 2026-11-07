@@ -1,0 +1,11 @@
+_ > nanoagent.plugin.v0001.ProductConfig:
+tagline: "Rewind a library database past one bad UPDATE without losing the day's real work"
+summary: "A database disaster-recovery drill. A nightly backup and a statement log are all that is left after an unqualified UPDATE wiped every return date. The agent must find the bad statement, keep every legitimate write after it, and rebuild restored.db. The verifier hashes every table, checks the schema and integrity, and names the mistake when the answer is wrong."
+highlights:
+  - "Three traps in one task: backup alone loses the afternoon, a full replay re-runs the bad UPDATE, and same-second writes need sequence order"
+  - "Every table is compared by canonical hash, with a row-level diff for diagnosis"
+  - "The verifier reads the SQLite file itself in plain Python and never calls a model"
+steps:
+  - "Pick a seed to open a reproducible incident"
+  - "The agent reads the log and finds the one bad statement"
+  - "It rebuilds restored.db, and the verifier compares it table by table"
