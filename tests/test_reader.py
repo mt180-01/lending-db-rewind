@@ -95,3 +95,28 @@ def test_every_seed_builds_a_backup_the_reader_reads(tmp_path: Path) -> None:
         assert {name: len(rows) for name, rows in database["tables"].items()} == {
             name: len(rows) for name, rows in generate(seed).rows.items()
         }
+
+
+def test_rowids_out_of_order_are_refused(tmp_path: Path) -> None:
+    path = tmp_path / "ordered.db"
+    connection = sqlite3.connect(path)
+    connection.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT)")
+    connection.executemany("INSERT INTO t VALUES (?, ?)", [(1, "a"), (2, "b"), (3, "c")])
+    connection.commit()
+    root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 't'").fetchone()[0]
+    connection.close()
+    data = bytearray(path.read_bytes())
+    start = (root - 1) * 4096 + 8  # the leaf's cell pointer array
+    data[start : start + 2], data[start + 2 : start + 4] = bytes(data[start + 2 : start + 4]), bytes(data[start : start + 2])
+    with pytest.raises(DatabaseError, match="out of order"):
+        read_database(bytes(data))
+
+
+def test_a_file_cut_inside_a_page_is_refused_even_when_its_header_agrees(tmp_path: Path) -> None:
+    opened(tmp_path)
+    data = bytearray((tmp_path / "backup.db").read_bytes())
+    pages = len(data) // 4096
+    cut = bytearray(data[:-1])
+    cut[28:32] = (pages - 1).to_bytes(4, "big")  # the header now agrees with the floor of the file size
+    with pytest.raises(DatabaseError, match="whole number of pages"):
+        read_database(bytes(cut))

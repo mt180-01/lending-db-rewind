@@ -226,3 +226,11 @@ def test_the_reference_verifier_checks_its_own_answer(tmp_path: Path) -> None:
     assert verifier.verify_output("expected_state", IncidentInput(seed=42), reference, str(tmp_path))["valid"]
     reference.alternatives[0].tables = reference.tables
     assert not verifier.verify_output("expected_state", IncidentInput(seed=42), reference, str(tmp_path))["valid"]
+
+
+def test_an_extra_table_is_refused(tmp_path: Path) -> None:
+    _, reference = opened(tmp_path)
+    made = restored(tmp_path, reference)
+    edit(tmp_path, "CREATE TABLE audit_log (note TEXT)")
+    verdict = judge(tmp_path, reference, submission(made, reference.bad_seq))
+    assert verdict["valid"] is False and {"tables", "schema"} <= {c["name"] for c in verdict["details"]["checks"] if not c["ok"]}
